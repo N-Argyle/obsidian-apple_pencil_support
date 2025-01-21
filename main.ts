@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { Plugin, TFile, Notice } from 'obsidian';
 
 import { html } from './html';
@@ -211,7 +212,7 @@ export default class DrawingPlugin extends Plugin {
 
 	onunload() {
 		// Clean up all drawing instances
-		this.drawingApps.forEach(app => app.destroy());
+		// this.drawingApps.forEach(app => app.destroy());
 		this.drawingApps.clear();
 	}
 

@@ -1,13 +1,21 @@
 // @ts-nocheck
 
 export class DrawingApp {
-  constructor(initColors: any) {
+  private storageKey: string;
+  private canvas: HTMLCanvasElement;
+  private isEditMode = false;
+  private containerHeight = 500; // Default height
+  private container: HTMLElement;
+
+  constructor(initColors: { textColor: string }, drawingId: string, container: HTMLElement) {
     this.initColors = initColors;
-    this.canvas = document.getElementById('drawing-canvas');
+    this.drawingId = drawingId;
+    this.container = container;
+    this.canvas = this.container.querySelector('.drawing-canvas') as HTMLCanvasElement;
     console.log('canvas created', this.canvas);
     this.ctx = this.canvas.getContext('2d', {
       desynchronized: true,
-      alpha: false
+      alpha: true
     });
     console.log('starting drawing app');
 
@@ -16,7 +24,7 @@ export class DrawingApp {
     console.log('offscreen canvas created', this.offscreenCanvas);
     this.offscreenCtx = this.offscreenCanvas.getContext('2d', {
       desynchronized: true,
-      alpha: false
+      alpha: true
     });
 
     this.isDrawing = false;
@@ -92,7 +100,7 @@ export class DrawingApp {
     };
 
     // Add eraser preview element
-    this.eraserPreview = document.getElementById('eraser-preview');
+    this.eraserPreview = this.container.querySelector('.eraser-preview');
     this.eraserPreview.style.borderColor = this.initColors.textColor;
 
     // Add a separate canvas for active drawing
@@ -123,24 +131,35 @@ export class DrawingApp {
       brushSize: this.brushSize
     });
 
-    this.loadState();
     this.startDrawLoop();
     this.initGrid();
+
+    // Add undo/redo button handlers
+    const undoButton = this.container.querySelector('#undo');
+    const redoButton = this.container.querySelector('#redo');
+    
+    undoButton?.addEventListener('click', () => this.undo());
+    redoButton?.addEventListener('click', () => this.redo());
   }
 
   initCanvas() {
     const resizeCanvas = () => {
-      const container = document.getElementById('canvas-container');
+      const container = this.container.querySelector('.canvas-container');
       const dpr = window.devicePixelRatio || 1;
       this.dpr = dpr;
 
+      // Get container dimensions from its computed style
+      const containerStyle = window.getComputedStyle(container);
+      const width = parseInt(containerStyle.width);
+      const height = parseInt(containerStyle.height);
+
       // Set physical pixels
-      this.canvas.width = container.clientWidth * dpr;
-      this.canvas.height = container.clientHeight * dpr;
+      this.canvas.width = width * dpr;
+      this.canvas.height = height * dpr;
 
       // Set CSS pixels
-      this.canvas.style.width = container.clientWidth + "px";
-      this.canvas.style.height = container.clientHeight + "px";
+      this.canvas.style.width = width + "px";
+      this.canvas.style.height = height + "px";
 
       // Resize grid canvas if it exists
       if (this.gridCanvas) {
@@ -160,74 +179,90 @@ export class DrawingApp {
     this.canvas.style.touchAction = 'none';
     this.canvas.addEventListener('touchstart', e => e.preventDefault(), { passive: false });
 
+    // Create ResizeObserver to watch container size changes
+    const resizeObserver = new ResizeObserver(() => {
+      resizeCanvas();
+    });
+
+    // Observe the container
+    const container = this.container.querySelector('.canvas-container');
+    resizeObserver.observe(container);
+
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
   }
 
   initEvents() {
     // Tool selection
-    document.querySelectorAll('.tool-button[data-tool]').forEach(button => {
-      button.addEventListener('click', (e) => {
-        document.querySelector('.tool-button.active').classList.remove('active');
-        button.classList.add('active');
-        this.currentTool = button.dataset.tool;
+    const toolButtons = this.container.querySelectorAll('.tool-button[data-tool]');
+    toolButtons?.forEach(button => {
+        button.addEventListener('click', (e) => {
+            const activeButton = this.container.querySelector('.tool-button.active');
+            activeButton?.classList.remove('active');
+            button.classList.add('active');
+            this.currentTool = (button as HTMLElement).dataset.tool || 'pen';
 
-        // Hide eraser preview initially when selecting eraser
-        this.eraserPreview.style.display = 'none';
+            // Hide eraser preview initially when selecting eraser
+            if (this.eraserPreview) {
+                this.eraserPreview.style.display = 'none';
+            }
 
-        if (this.currentTool === 'eraser') {
-          // Set eraser to largest size by default
-          document.querySelectorAll('.tool-button[data-size]').forEach(btn =>
-            btn.classList.remove('active')
-          );
-          document.querySelector('.tool-button[data-size="large"]').classList.add('active');
-          this.brushSize = this.eraserSizes.large;
-          this.updateEraserPreview();
-        } else {
-          // Reset to small size for pen
-          document.querySelectorAll('.tool-button[data-size]').forEach(btn =>
-            btn.classList.remove('active')
-          );
-          document.querySelector('.tool-button[data-size="small"]').classList.add('active');
-          this.brushSize = this.brushSizes.small;
-        }
-      });
+            if (this.currentTool === 'eraser') {
+                const sizeButtons = this.container.querySelectorAll('.tool-button[data-size]');
+                sizeButtons.forEach(btn => btn.classList.remove('active'));
+                const largeButton = this.container.querySelector('.tool-button[data-size="large"]');
+                largeButton?.classList.add('active');
+                this.brushSize = this.eraserSizes.large;
+                this.updateEraserPreview();
+            } else {
+                const sizeButtons = this.container.querySelectorAll('.tool-button[data-size]');
+                sizeButtons.forEach(btn => btn.classList.remove('active'));
+                const smallButton = this.container.querySelector('.tool-button[data-size="small"]');
+                smallButton?.classList.add('active');
+                this.brushSize = this.brushSizes.small;
+            }
+        });
     });
 
     // Color picker
-    document.getElementById('color-picker').addEventListener('input', (e) => {
-      this.color = e.target.value;
-      console.log('color changed', this.color);
+    const colorPicker = this.container.querySelector('.color-picker');
+    colorPicker?.addEventListener('input', (e) => {
+        this.color = (e.target as HTMLInputElement).value;
     });
 
-    // Replace brush size slider with buttons
-    document.querySelectorAll('.tool-button[data-size]').forEach(button => {
-      button.addEventListener('click', (e) => {
-        document.querySelectorAll('.tool-button[data-size]').forEach(btn =>
-          btn.classList.remove('active')
-        );
-        button.classList.add('active');
-        // Set brush size based on tool
-        this.brushSize = this.currentTool === 'eraser' ?
-          this.eraserSizes[button.dataset.size] :
-          this.brushSizes[button.dataset.size];
+    // Size buttons
+    const sizeButtons = this.container.querySelectorAll('.tool-button[data-size]');
+    sizeButtons?.forEach(button => {
+        button.addEventListener('click', () => {
+            sizeButtons.forEach(btn => btn.classList.remove('active'));
+            button.classList.add('active');
+            const size = (button as HTMLElement).dataset.size as 'small' | 'medium' | 'large';
+            this.brushSize = this.currentTool === 'eraser' ? 
+                this.eraserSizes[size] : 
+                this.brushSizes[size];
 
-        if (this.currentTool === 'eraser') {
-          this.updateEraserPreview();
-        }
-      });
+            if (this.currentTool === 'eraser') {
+                this.updateEraserPreview();
+            }
+        });
     });
 
-    // Clear, Undo, Redo
-    document.getElementById('clear').addEventListener('click', () => this.clearCanvas());
-    document.getElementById('undo').addEventListener('click', () => this.undo());
-    document.getElementById('redo').addEventListener('click', () => this.redo());
+    // Action buttons
+    const clearButton = this.container.querySelector('.clear');
+    const undoButton = this.container.querySelector('.undo');
+    const redoButton = this.container.querySelector('.redo');
 
-    // Drawing events
-    this.canvas.addEventListener('pointermove', this.draw.bind(this), { passive: true });
-    this.canvas.addEventListener('pointerdown', this.startDrawing.bind(this), { passive: true });
-    this.canvas.addEventListener('pointerup', this.endDrawing.bind(this), { passive: true });
-    this.canvas.addEventListener('pointerout', this.endDrawing.bind(this), { passive: true });
+    clearButton?.addEventListener('click', () => this.clearCanvas());
+    undoButton?.addEventListener('click', () => this.undo());
+    redoButton?.addEventListener('click', () => this.redo());
+
+    // Canvas events
+    if (this.canvas) {
+        this.canvas.addEventListener('pointermove', this.draw.bind(this));
+        this.canvas.addEventListener('pointerdown', this.startDrawing.bind(this));
+        this.canvas.addEventListener('pointerup', this.endDrawing.bind(this));
+        this.canvas.addEventListener('pointerout', this.endDrawing.bind(this));
+    }
 
     // Add touch event handlers for two-finger tap
     this.canvas.addEventListener('touchstart', (e) => {
@@ -503,9 +538,7 @@ export class DrawingApp {
   }
 
   draw(e) {
-    // Only handle drawing for pen/eraser
-    if (!this.isDrawing || this.isPanning ||
-      (this.currentTool !== 'pen' && this.currentTool !== 'eraser')) return;
+    if (!this.isDrawing || this.isPanning) return;
 
     const point = {
       x: (e.offsetX * this.dpr + this.viewportX) / this.scale,
@@ -533,27 +566,25 @@ export class DrawingApp {
         this.ctx.translate(-this.viewportX, -this.viewportY);
         this.ctx.scale(this.scale, this.scale);
 
-        this.ctx.beginPath();
-        this.ctx.lineCap = 'round';
-        this.ctx.lineJoin = 'round';
-
         if (this.currentTool === 'eraser') {
-          this.ctx.globalCompositeOperation = 'source-over';
-          this.ctx.strokeStyle = this.initColors.backgroundPrimary;
+          this.eraseArea(p1, p2, this.brushSize / 2);
         } else {
+          this.ctx.beginPath();
+          this.ctx.lineCap = 'round';
+          this.ctx.lineJoin = 'round';
           this.ctx.globalCompositeOperation = 'source-over';
           this.ctx.strokeStyle = this.color;
+          
+          const baseWidth = this.brushSize * 0.6;
+          const pressureWidth = this.brushSize * 1.2;
+          const pressure = p2.pressure;
+
+          this.ctx.lineWidth = baseWidth + (pressureWidth * pressure);
+
+          this.ctx.moveTo(p1.x, p1.y);
+          this.ctx.lineTo(p2.x, p2.y);
+          this.ctx.stroke();
         }
-
-        const baseWidth = this.brushSize * 0.6;
-        const pressureWidth = this.brushSize * 1.2;
-        const pressure = p2.pressure;
-
-        this.ctx.lineWidth = baseWidth + (pressureWidth * pressure);
-
-        this.ctx.moveTo(p1.x, p1.y);
-        this.ctx.lineTo(p2.x, p2.y);
-        this.ctx.stroke();
 
         this.ctx.restore();
       }
@@ -563,14 +594,12 @@ export class DrawingApp {
   }
 
   endDrawing() {
-    // Only handle drawing for pen/eraser
     if (this.currentTool === 'pen' || this.currentTool === 'eraser') {
       if (!this.isDrawing) return;
 
       if (this.currentStroke && this.currentStroke.points.length > 0) {
         this.strokes.push(this.currentStroke);
-        this.redoStrokes = [];  // Clear redo stack
-        this.saveToLocalStorage();
+        this.redoStrokes = [];
       }
 
       this.isDrawing = false;
@@ -580,90 +609,30 @@ export class DrawingApp {
   }
 
   clearCanvas() {
-    // Fill with background color instead of clearing
     this.ctx.fillStyle = this.initColors.backgroundPrimary;
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     this.strokes = [];
     this.redoStrokes = [];
-    this.saveToLocalStorage();
-  }
-
-  saveState() {
-    // Don't save duplicate states
-    const currentState = this.canvas.toDataURL();
-    const lastState = this.strokes[this.strokes.length - 1];
-
-    if (currentState !== lastState) {
-      this.strokes.push(currentState);
-      this.redoStrokes = [];
-      // Limit the size of strokes to prevent memory issues
-      if (this.strokes.length > 50) {
-        this.strokes.shift();
-      }
-      this.saveToLocalStorage();
-    }
-  }
-
-  undo() {
-    if (this.strokes.length > 0) {
-      const stroke = this.strokes.pop();
-      this.redoStrokes.push(stroke);
-      this.redrawCanvas();
-      this.saveToLocalStorage();
-    }
-  }
-
-  redo() {
-    if (this.redoStrokes.length > 0) {
-      const stroke = this.redoStrokes.pop();
-      this.strokes.push(stroke);
-      this.drawStroke(stroke);
-      this.saveToLocalStorage();
-    }
-  }
-
-  loadState() {
-    const saved = localStorage.getItem('canvasStrokes');
-    if (saved) {
-      const data = JSON.parse(saved);
-      this.strokes = data.strokes || [];
-      this.shapes = data.shapes || [];
-      this.redoStrokes = data.redoStrokes || [];
-      this.redrawCanvas();
-    }
-  }
-
-  saveToLocalStorage() {
-    localStorage.setItem('canvasStrokes', JSON.stringify({
-      strokes: this.strokes,
-      shapes: this.shapes,
-      redoStrokes: this.redoStrokes
-    }));
   }
 
   redrawCanvas() {
-    // Clear to white background
-    console.log('redrawing canvas', this.initColors);
-    this.ctx.fillStyle = this.initColors.backgroundPrimary;
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    // Clear canvas with transparency
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
     // Apply transforms
     this.ctx.save();
     this.ctx.translate(-this.viewportX, -this.viewportY);
     this.ctx.scale(this.scale, this.scale);
 
-    // Draw all strokes first
-    for (const stroke of this.strokes) {
-      this.drawStroke(stroke);
-    }
+    // Reset composite operation
+    this.ctx.globalCompositeOperation = 'source-over';
 
-    // Then draw all shapes on top
-    this.shapes.forEach(shape => {
-      this.drawShape(shape);
-      if (shape === this.selectedShape) {
-        this.drawSelectionHandles(shape);
+    // Draw all strokes
+    for (const stroke of this.strokes) {
+      if (stroke && stroke.points && stroke.points.length > 0) {
+        this.drawStroke(stroke);
       }
-    });
+    }
 
     this.ctx.restore();
 
@@ -688,39 +657,55 @@ export class DrawingApp {
     return distance / timeElapsed; // pixels per millisecond
   }
 
-  drawStroke(stroke) {
-    const points = stroke.points;
-    if (points.length < 2) return;
-
-    this.ctx.beginPath();
-    this.ctx.lineCap = 'round';
-    this.ctx.lineJoin = 'round';
-
+  drawStroke(stroke: any) {
+    if (!stroke || !Array.isArray(stroke.points) || stroke.points.length === 0) {
+        return;
+    }
+    
+    const ctx = this.ctx;
+    
     if (stroke.tool === 'eraser') {
-      this.ctx.globalCompositeOperation = 'source-over';
-      this.ctx.strokeStyle = this.initColors.backgroundPrimary;
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.fillStyle = this.initColors.backgroundPrimary;
+        ctx.strokeStyle = this.initColors.backgroundPrimary;
     } else {
-      this.ctx.globalCompositeOperation = 'source-over';
-      this.ctx.strokeStyle = stroke.color;
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.strokeStyle = stroke.color;
     }
 
-    const strokeWidth = stroke.brushSize * 0.85;
-    this.ctx.lineWidth = strokeWidth / this.scale;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
 
-    for (let i = 0; i < points.length - 1; i++) {
-      const p1 = points[i];
-      const p2 = points[i + 1];
-
-      if (i === 0) {
-        this.ctx.moveTo(p1.x, p1.y);
-      }
-      this.ctx.lineTo(p2.x, p2.y);
+    if (stroke.points.length === 1) {
+        const point = stroke.points[0];
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, stroke.brushSize / 2, 0, Math.PI * 2);
+        if (stroke.tool === 'eraser') {
+            ctx.fill();
+        } else {
+            ctx.stroke();
+        }
+    } else {
+        ctx.beginPath();
+        ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+        
+        for (let i = 1; i < stroke.points.length; i++) {
+            const point = stroke.points[i];
+            // Apply the same pressure-based width calculation as during drawing
+            const baseWidth = stroke.brushSize * 0.6;
+            const pressureWidth = stroke.brushSize * 1.2;
+            const pressure = point.pressure || 1;
+            
+            ctx.lineWidth = baseWidth + (pressureWidth * pressure);
+            
+            ctx.lineTo(point.x, point.y);
+            ctx.stroke();
+            
+            // Start a new path to ensure each segment uses its own pressure
+            ctx.beginPath();
+            ctx.moveTo(point.x, point.y);
+        }
     }
-
-    this.ctx.stroke();
-
-    // Reset composite operation
-    this.ctx.globalCompositeOperation = 'source-over';
   }
 
   startDrawLoop() {
@@ -731,8 +716,8 @@ export class DrawingApp {
   }
 
   initGrid() {
-    const gridToggle = document.getElementById('grid-toggle');
-    const container = document.getElementById('canvas-container');
+    const gridToggle = this.container.querySelector('.grid-toggle');
+    const container = this.container.querySelector('.canvas-container');
 
     // Create grid canvas
     this.gridCanvas = document.createElement('canvas');
@@ -740,9 +725,14 @@ export class DrawingApp {
     this.gridCanvas.style.top = '0';
     this.gridCanvas.style.left = '0';
     this.gridCanvas.style.pointerEvents = 'none';
-    this.gridCanvas.style.zIndex = '1';  // Add z-index
+    this.gridCanvas.style.zIndex = '0';  // Set grid canvas to base layer
     container.appendChild(this.gridCanvas);
-    this.gridCtx = this.gridCanvas.getContext('2d', { alpha: true });  // Enable alpha
+    this.gridCtx = this.gridCanvas.getContext('2d', { alpha: true });
+
+    // Set drawing canvas to be above grid
+    this.canvas.style.position = 'absolute';
+    this.canvas.style.zIndex = '1';
+    this.canvas.style.backgroundColor = 'transparent';
 
     this.gridCanvas.width = this.canvas.width;
     this.gridCanvas.height = this.canvas.height;
@@ -885,36 +875,47 @@ export class DrawingApp {
   }
 
   eraseArea(p1, p2, radius) {
-    console.log('Erasing area', p1, p2, radius); // Debug log
-    let modified = false;
+    // Clear the main canvas area with a composite operation
+    this.ctx.save();
+    this.ctx.globalCompositeOperation = 'destination-out';
+    
+    // Apply viewport transform
+    this.ctx.translate(-this.viewportX, -this.viewportY);
+    this.ctx.scale(this.scale, this.scale);
+    
+    // Draw eraser stroke
+    this.ctx.beginPath();
+    this.ctx.lineCap = 'round';
+    this.ctx.lineWidth = radius * 2;
+    this.ctx.moveTo(p1.x, p1.y);
+    this.ctx.lineTo(p2.x, p2.y);
+    this.ctx.stroke();
+    
+    this.ctx.restore();
 
-    // Draw all strokes except the ones being erased
+    // Remove or split affected strokes
     for (let i = this.strokes.length - 1; i >= 0; i--) {
       const stroke = this.strokes[i];
-      if (!stroke.erased && stroke.points && stroke.points.length > 0) {
-        // Check if stroke intersects with eraser path
-        if (this.strokeIntersectsEraser(stroke, p1, p2, radius)) {
-          console.log('Found intersecting stroke', i); // Debug log
-          // Split the stroke at the intersection points
-          const newStrokes = this.splitStroke(stroke, p1, p2, radius);
-          if (newStrokes.length > 0) {
-            // Remove the original stroke and add the new segments
-            this.strokes.splice(i, 1);
-            this.strokes.push(...newStrokes);
-            modified = true;
-          } else {
-            // If no new strokes, just mark this one as erased
-            stroke.erased = true;
-            modified = true;
-          }
+      if (!stroke || !stroke.points || stroke.points.length === 0) continue;
+      
+      // Check if any point of the stroke is within eraser radius
+      let shouldRemove = false;
+      for (let j = 0; j < stroke.points.length - 1; j++) {
+        const pt1 = stroke.points[j];
+        const pt2 = stroke.points[j + 1];
+        if (this.lineSegmentDistance(pt1, pt2, p1, p2) < radius) {
+          shouldRemove = true;
+          break;
         }
+      }
+      
+      if (shouldRemove) {
+        this.strokes.splice(i, 1);
       }
     }
 
-    if (modified) {
-      // Only redraw if we actually modified something
-      this.redrawCanvas();
-    }
+    // Redraw everything
+    this.redrawCanvas();
   }
 
   strokeIntersectsEraser(stroke, p1, p2, radius) {
@@ -1111,6 +1112,106 @@ export class DrawingApp {
         shape.width = point.x - shape.x;
         shape.height = point.y - shape.y;
         break;
+    }
+  }
+
+  loadFromData(data: string) {
+    if (!data) return;
+    
+    try {
+      const parsed = JSON.parse(data);
+      
+      // Validate strokes data structure
+      if (Array.isArray(parsed.strokes)) {
+        this.strokes = parsed.strokes.filter(stroke => 
+          stroke && 
+          Array.isArray(stroke.points) && 
+          stroke.points.every(point => 
+            point && 
+            typeof point.x === 'number' && 
+            typeof point.y === 'number'
+          )
+        );
+      } else {
+        this.strokes = [];
+      }
+      
+      this.shapes = Array.isArray(parsed.shapes) ? parsed.shapes : [];
+      this.redoStrokes = Array.isArray(parsed.redoStrokes) ? parsed.redoStrokes : [];
+      
+      // Load container height if present
+      if (typeof parsed.containerHeight === 'number') {
+        this.containerHeight = parsed.containerHeight;
+        const container = this.container.closest('.drawing-container') as HTMLElement;
+        if (container) {
+          container.style.height = `${this.containerHeight}px`;
+        }
+      }
+      
+      this.redrawCanvas();
+    } catch (e) {
+      console.error('Failed to parse drawing data:', e);
+      this.strokes = [];
+      this.shapes = [];
+      this.redoStrokes = [];
+    }
+  }
+
+  getDrawingData(): string {
+    return JSON.stringify({
+      strokes: this.strokes,
+      shapes: this.shapes,
+      redoStrokes: this.redoStrokes,
+      containerHeight: this.containerHeight
+    });
+  }
+
+  setEditMode(enabled: boolean) {
+    this.isEditMode = enabled;
+    this.canvas.style.pointerEvents = enabled ? 'auto' : 'none';
+    
+    // Optional: show visual indication of edit mode
+    this.canvas.style.cursor = enabled ? 'crosshair' : 'default';
+  }
+
+  // Update event handlers to check edit mode
+  handlePointerDown(e: PointerEvent) {
+    if (!this.isEditMode) return;
+    // ... existing pointer down code ...
+  }
+
+  handlePointerMove(e: PointerEvent) {
+    if (!this.isEditMode) return;
+    // ... existing pointer move code ...
+  }
+
+  handlePointerUp(e: PointerEvent) {
+    if (!this.isEditMode) return;
+    // ... existing pointer up code ...
+  }
+
+  // Add method to update container height
+  updateContainerHeight(height: number) {
+    this.containerHeight = height;
+  }
+
+  undo() {
+    if (this.strokes.length > 0) {
+      const stroke = this.strokes.pop();
+      if (stroke) {
+        this.redoStrokes.push(stroke);
+        this.redrawCanvas();
+      }
+    }
+  }
+
+  redo() {
+    if (this.redoStrokes.length > 0) {
+      const stroke = this.redoStrokes.pop();
+      if (stroke) {
+        this.strokes.push(stroke);
+        this.redrawCanvas();
+      }
     }
   }
 }

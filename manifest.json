@@ -1,7 +1,7 @@
 {
 	"id": "apple-pencil-support",
 	"name": "Apple Pencil Support",
-	"version": "1.0.1",
+	"version": "1.0.12",
 	"minAppVersion": "0.15.0",
 	"description": "An Obsidian plugin which adds drawing support for Apple Pencil and other stylus devices",
 	"author": "Obsidian",

@@ -1,0 +1,129 @@
+/*
+
+This CSS file will be included with your plugin, and
+available in the app when your plugin is enabled.
+
+If your plugin does not need CSS, delete this file.
+
+*/
+
+.drawing-container {
+    position: relative;
+    width: 100%;
+    height: 500px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    overflow: hidden;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.drawing-toolbar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 60px;
+    background: var(--background-primary);
+    display: flex;
+    align-items: center;
+    padding: 0 1rem;
+    gap: 1rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    z-index: 1;
+}
+
+.canvas-container {
+    position: absolute;
+    top: 60px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--background-primary);
+}
+
+.drawing-canvas {
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+}
+
+.tool-group {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.color-picker {
+    width: 40px;
+    height: 40px;
+    border: none;
+    padding: 0;
+    border-radius: 50%;
+    cursor: pointer;
+    margin-right: 10px;
+}
+
+.tool-button {
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 32px;
+    width: 32px;
+    border: none;
+    background: var(--background-secondary);
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--text-normal);
+}
+
+.tool-button.active {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+}
+
+.tool-button[data-size="small"] {
+    font-size: 12px;
+}
+
+.tool-button[data-size="medium"] {
+    font-size: 12px;
+}
+
+.tool-button[data-size="large"] {
+    font-size: 14px;
+}
+
+#eraser-preview {
+    position: fixed;
+    pointer-events: none;
+    border: 2px solid var(--text-normal);
+    border-radius: 50%;
+    display: none;
+    z-index: 2;
+}
+
+.grid-pattern {
+    position: relative;
+}
+
+.grid-pattern::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    background-image: 
+        linear-gradient(to right, var(--background-modifier-border) 1px, transparent 1px),
+        linear-gradient(to bottom, var(--background-modifier-border) 1px, transparent 1px);
+    background-size: var(--grid-size, 20px) var(--grid-size, 20px);
+    background-position: var(--grid-offset-x, 0px) var(--grid-offset-y, 0px);
+    background-attachment: local;
+    will-change: transform;
+}
+
+/* Add the rest of the CSS styles from backup.html, converting colors to use Obsidian CSS variables */
